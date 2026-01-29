@@ -462,6 +462,11 @@ def _replace_markers(doc: ET._Element) -> None:
     max_bm = _max_bookmark_id(doc)
     next_bm = max_bm + 1
 
+    fig_numbers: dict[str, int] = {}
+    tab_numbers: dict[str, int] = {}
+    fig_counter = 0
+    tab_counter = 0
+
     # Captions are expected to be the entire paragraph text
     for p in doc.findall(".//w:p", namespaces=NS):
         text = "".join([t.text or "" for t in p.findall(".//w:t", namespaces=NS)]).strip()
@@ -469,8 +474,18 @@ def _replace_markers(doc: ET._Element) -> None:
         if m:
             fig_id = m.group(1)
             title = m.group(2)
+            fig_counter += 1
+            fig_numbers[fig_id] = fig_counter
             bm_name = _bookmark_name("fig", fig_id)
-            _replace_paragraph_with_caption(p, label="Figura", seq_name="Figura", title=title, bookmark=bm_name, bm_id=next_bm)
+            _replace_paragraph_with_caption(
+                p,
+                label="Figura",
+                seq_name="Figura",
+                title=title,
+                bookmark=bm_name,
+                bm_id=next_bm,
+                number=fig_counter,
+            )
             next_bm += 1
             continue
 
@@ -478,8 +493,18 @@ def _replace_markers(doc: ET._Element) -> None:
         if m:
             tab_id = m.group(1)
             title = m.group(2)
+            tab_counter += 1
+            tab_numbers[tab_id] = tab_counter
             bm_name = _bookmark_name("tab", tab_id)
-            _replace_paragraph_with_caption(p, label="Tabla", seq_name="Tabla", title=title, bookmark=bm_name, bm_id=next_bm)
+            _replace_paragraph_with_caption(
+                p,
+                label="Tabla",
+                seq_name="Tabla",
+                title=title,
+                bookmark=bm_name,
+                bm_id=next_bm,
+                number=tab_counter,
+            )
             next_bm += 1
             continue
 
@@ -488,10 +513,19 @@ def _replace_markers(doc: ET._Element) -> None:
         for t in list(p.findall(".//w:t", namespaces=NS)):
             if not t.text:
                 continue
-            _replace_inline_markers_in_textnode(t)
+            _replace_inline_markers_in_textnode(
+                t,
+                fig_numbers=fig_numbers,
+                tab_numbers=tab_numbers,
+            )
 
 
-def _replace_inline_markers_in_textnode(t: ET._Element) -> None:
+def _replace_inline_markers_in_textnode(
+    t: ET._Element,
+    *,
+    fig_numbers: dict[str, int],
+    tab_numbers: dict[str, int],
+) -> None:
     txt = t.text or ""
 
     # REF markers
@@ -503,7 +537,14 @@ def _replace_inline_markers_in_textnode(t: ET._Element) -> None:
         after = txt[m.end() :]
         t.text = before
         bm = _bookmark_name(kind, ref_id)
-        nodes = _make_ref_field_runs(bookmark=bm)
+        if kind == "fig":
+            n = fig_numbers.get(ref_id)
+            placeholder = f"Figura {n}" if n is not None else "Figura"
+        else:
+            n = tab_numbers.get(ref_id)
+            placeholder = f"Tabla {n}" if n is not None else "Tabla"
+
+        nodes = _make_ref_field_runs(bookmark=bm, result_text=placeholder)
         if after:
             nodes.append(_make_run_with_text(after))
         _insert_after_textnode(t, nodes)
@@ -547,6 +588,7 @@ def _replace_paragraph_with_caption(
     title: str,
     bookmark: str,
     bm_id: int,
+    number: int,
 ) -> None:
     # Remove all children except pPr
     ppr = p.find("w:pPr", namespaces=NS)
@@ -570,7 +612,7 @@ def _replace_paragraph_with_caption(
     p.append(bm_start)
 
     p.append(_make_run_with_text(f"{label} "))
-    p.extend(_make_seq_field_runs(seq_name=seq_name))
+    p.extend(_make_seq_field_runs(seq_name=seq_name, result_text=str(number)))
 
     bm_end = ET.Element(ET.QName(W_NS, "bookmarkEnd"))
     bm_end.set(ET.QName(W_NS, "id"), str(bm_id))
@@ -579,7 +621,7 @@ def _replace_paragraph_with_caption(
     p.append(_make_run_with_text(f". {title}"))
 
 
-def _make_seq_field_runs(*, seq_name: str) -> list[ET._Element]:
+def _make_seq_field_runs(*, seq_name: str, result_text: str) -> list[ET._Element]:
     runs: list[ET._Element] = []
 
     r_begin = ET.Element(ET.QName(W_NS, "r"))
@@ -599,7 +641,7 @@ def _make_seq_field_runs(*, seq_name: str) -> list[ET._Element]:
     r_txt = ET.Element(ET.QName(W_NS, "r"))
     rpr = ET.SubElement(r_txt, ET.QName(W_NS, "rPr"))
     ET.SubElement(rpr, ET.QName(W_NS, "noProof"))
-    ET.SubElement(r_txt, ET.QName(W_NS, "t")).text = "0"
+    ET.SubElement(r_txt, ET.QName(W_NS, "t")).text = result_text
     runs.append(r_txt)
 
     r_end = ET.Element(ET.QName(W_NS, "r"))
@@ -609,7 +651,7 @@ def _make_seq_field_runs(*, seq_name: str) -> list[ET._Element]:
     return runs
 
 
-def _make_ref_field_runs(*, bookmark: str) -> list[ET._Element]:
+def _make_ref_field_runs(*, bookmark: str, result_text: str) -> list[ET._Element]:
     runs: list[ET._Element] = []
 
     r_begin = ET.Element(ET.QName(W_NS, "r"))
@@ -629,7 +671,10 @@ def _make_ref_field_runs(*, bookmark: str) -> list[ET._Element]:
     r_txt = ET.Element(ET.QName(W_NS, "r"))
     rpr = ET.SubElement(r_txt, ET.QName(W_NS, "rPr"))
     ET.SubElement(rpr, ET.QName(W_NS, "noProof"))
-    ET.SubElement(r_txt, ET.QName(W_NS, "t")).text = "0"
+    t_el = ET.SubElement(r_txt, ET.QName(W_NS, "t"))
+    if result_text.startswith(" ") or result_text.endswith(" "):
+        t_el.set(ET.QName("http://www.w3.org/XML/1998/namespace", "space"), "preserve")
+    t_el.text = result_text
     runs.append(r_txt)
 
     r_end = ET.Element(ET.QName(W_NS, "r"))

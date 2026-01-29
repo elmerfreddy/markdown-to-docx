@@ -47,7 +47,9 @@ def build_docx(
         input_md=processed_md,
         output_docx=body_docx,
         reference_doc=template_docx,
-        resource_paths=[input_md.parent, input_md.parent.parent],
+        # NOTE: when we render Mermaid we reference images under the workdir.
+        # Pandoc will only resolve them if the workdir is in --resource-path.
+        resource_paths=[processed_md.parent, input_md.parent, input_md.parent.parent],
     )
 
     assemble_final_docx(
