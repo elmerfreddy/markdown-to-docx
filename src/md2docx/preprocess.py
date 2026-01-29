@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import struct
 
 from md2docx.mermaid import render_mermaid_to_png
 
@@ -18,6 +19,28 @@ class PreprocessResult:
 
 _FIG_DIRECTIVE_RE = re.compile(r"^<!--\s*figure\s+(.*?)\s*-->\s*$")
 _TAB_DIRECTIVE_RE = re.compile(r"^<!--\s*table\s+(.*?)\s*-->\s*$")
+
+# Target figure sizing in the generated DOCX.
+# Keep Mermaid diagrams readable without overflowing page height.
+MERMAID_MAX_WIDTH_IN = 6.0
+MERMAID_MAX_HEIGHT_IN = 7.0
+
+
+def _png_dimensions(path: Path) -> tuple[int, int] | None:
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    off = 8
+    if len(data) < off + 24:
+        return None
+    length = struct.unpack(">I", data[off : off + 4])[0]
+    if data[off + 4 : off + 8] != b"IHDR":
+        return None
+    ihdr = data[off + 8 : off + 8 + length]
+    if len(ihdr) < 8:
+        return None
+    w, h = struct.unpack(">II", ihdr[:8])
+    return int(w), int(h)
 
 
 def _parse_kv(s: str) -> dict[str, str]:
@@ -105,7 +128,13 @@ def preprocess_markdown(*, input_md: Path, out_dir: Path, media_dir: Path) -> Pr
 
                 # Reference relative to processed.md
                 rel = png_path.relative_to(out_dir)
-                out_lines.append(f"![]({rel.as_posix()})")
+                dims = _png_dimensions(png_path)
+                width_in = MERMAID_MAX_WIDTH_IN
+                if dims is not None:
+                    w_px, h_px = dims
+                    if h_px > 0:
+                        width_in = min(MERMAID_MAX_WIDTH_IN, MERMAID_MAX_HEIGHT_IN * (w_px / h_px))
+                out_lines.append(f"![]({rel.as_posix()}){{width={width_in:.2f}in}}")
                 out_lines.append("")
                 out_lines.append(f"Fuente: {source}")
                 out_lines.append("")

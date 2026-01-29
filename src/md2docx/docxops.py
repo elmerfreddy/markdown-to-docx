@@ -69,6 +69,9 @@ def assemble_final_docx(
         # Replace markers with Word fields
         _replace_markers(tmpl_doc)
 
+        # Align figure images consistently (caption above, centered image).
+        _center_captioned_figure_images(tmpl_doc)
+
         # Bibliography sources customXml
         item1_xml = zt.read("customXml/item1.xml") if "customXml/item1.xml" in zt.namelist() else None
         new_item1_xml = (
@@ -564,6 +567,33 @@ def _replace_inline_markers_in_textnode(
         return
 
     return
+
+
+def _center_captioned_figure_images(doc: ET._Element) -> None:
+    body = doc.find(".//w:body", namespaces=NS)
+    if body is None:
+        return
+
+    paras = body.findall("./w:p", namespaces=NS)
+    for i in range(len(paras) - 1):
+        cap = paras[i]
+        nxt = paras[i + 1]
+
+        if not _is_paragraph_style(cap, "Caption"):
+            continue
+        # Only for figure captions (not table captions)
+        if not cap.xpath(".//w:instrText[contains(., 'SEQ Figura')]", namespaces=NS):
+            continue
+        if not (nxt.xpath(".//w:drawing", namespaces=NS) or nxt.xpath(".//w:pict", namespaces=NS)):
+            continue
+
+        ppr = nxt.find("w:pPr", namespaces=NS)
+        if ppr is None:
+            ppr = ET.SubElement(nxt, ET.QName(W_NS, "pPr"))
+        jc = ppr.find("w:jc", namespaces=NS)
+        if jc is None:
+            jc = ET.SubElement(ppr, ET.QName(W_NS, "jc"))
+        jc.set(ET.QName(W_NS, "val"), "center")
 
 
 def _insert_after_textnode(t: ET._Element, new_nodes: list[ET._Element]) -> None:

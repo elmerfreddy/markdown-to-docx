@@ -43,6 +43,8 @@ def render_mermaid_to_png(mermaid_src: str, *, output_png: Path) -> None:
                     str(output_png),
                     "--backgroundColor",
                     "transparent",
+                    "--scale",
+                    "4",
                     "--width",
                     "1600",
                 ]
