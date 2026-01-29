@@ -40,6 +40,6 @@ flowchart TD
 
 Ver @tab:stack para el detalle del stack.
 
-## Referencias
+## Cierre
 
 Segun [@ONU16], la transformacion urbana requiere un marco de gobernanza y financiamiento.

@@ -87,6 +87,10 @@ Esto actualiza:
 - referencias cruzadas (REF)
 - citas y bibliografia
 
+Nota de autor:
+
+- Evita agregar una seccion "Referencias" en el Markdown. La plantilla ya la incluye (Heading1 + campo `BIBLIOGRAPHY`).
+
 ## Mermaid
 
 Para render Mermaid localmente se requiere `mmdc`.

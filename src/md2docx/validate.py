@@ -114,6 +114,12 @@ def validate_project(input_md: Path, *, sources_path: Path, strict: bool) -> Val
         if tag not in tags:
             errors.append(f"citation tag not found in sources: {tag}")
 
+    # Warn if the author adds a bibliography heading that will likely duplicate the template.
+    if re.search(r"^#{1,6}\s+Referencias\s*$", txt, flags=re.M | re.I):
+        warnings.append(
+            "Markdown contains a 'Referencias' heading. The template already includes 'Referencias' + BIBLIOGRAPHY."
+        )
+
     if strict and warnings and not errors:
         errors.append("warnings present in strict mode")
 

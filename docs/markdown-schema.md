@@ -103,3 +103,7 @@ Notas:
 
 - El estilo APA es el que trae la plantilla Word.
 - La bibliografia se genera con el campo `BIBLIOGRAPHY` ya incluido en la plantilla.
+
+Recomendacion:
+
+- No escribas una seccion final titulada "Referencias" en el Markdown. La plantilla ya incluye la seccion "Referencias" + bibliografia automatica.
