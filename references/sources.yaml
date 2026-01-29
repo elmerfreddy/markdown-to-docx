@@ -1,0 +1,9 @@
+sources:
+  - tag: ONU16
+    type: Book
+    title: "Nueva Agenda Urbana"
+    year: 2016
+    authors:
+      - corporate: "ONU-Habitat"
+    city: "Quito"
+    publisher: "ONU-Habitat"
