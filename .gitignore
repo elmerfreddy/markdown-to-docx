@@ -27,3 +27,8 @@ Thumbs.db
 .md2docx/
 tmp_*.md
 tmp_*.docx
+test.docx
+
+# Local content drafts
+contenido/
+tutoriales/

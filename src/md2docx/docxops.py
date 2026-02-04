@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import zipfile
+import unicodedata
 
 from lxml import etree as ET
 import yaml
@@ -15,8 +16,12 @@ from md2docx.bibliography import build_sources_customxml, load_sources_yaml
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 
 NS = {"w": W_NS, "r": R_NS}
+_INLINE_MARKER_RE = re.compile(
+    r"\[\[MD2DOCX_REF:(fig|tab):([A-Za-z0-9_-]+)\]\]|\[\[MD2DOCX_CITATION:([A-Za-z0-9_-]+)\]\]"
+)
 
 
 @dataclass(frozen=True)
@@ -43,12 +48,14 @@ def assemble_final_docx(
         # Load XML parts
         tmpl_doc = _xml_from_bytes(zt.read("word/document.xml"))
         tmpl_rels = _xml_from_bytes(zt.read("word/_rels/document.xml.rels"))
+        types_xml = _xml_from_bytes(zt.read("[Content_Types].xml"))
 
         body_doc = _xml_from_bytes(zb.read("word/document.xml"))
         body_rels = _xml_from_bytes(zb.read("word/_rels/document.xml.rels"))
 
         # Merge relationships + media
         rel_map, added_media = _merge_rels_and_media(tmpl_rels, body_rels, zt=zt, zb=zb)
+        _ensure_content_types(types_xml, added_media=added_media)
 
         # Merge footnotes/endnotes and patch body doc
         footnote_map, endnote_map, new_footnotes_xml, new_endnotes_xml = _merge_notes(
@@ -64,13 +71,16 @@ def assemble_final_docx(
         _ensure_list_of_tables(tmpl_doc)
 
         # Replace the sample content with body content
-        _replace_content_region(tmpl_doc, body_doc)
+        inserted_nodes = _replace_content_region(tmpl_doc, body_doc)
 
         # Replace markers with Word fields
         _replace_markers(tmpl_doc)
 
         # Align figure images consistently (caption above, centered image).
         _center_captioned_figure_images(tmpl_doc)
+
+        # Ensure tables in body content have borders.
+        _apply_table_borders(inserted_nodes)
 
         # Bibliography sources customXml
         item1_xml = zt.read("customXml/item1.xml") if "customXml/item1.xml" in zt.namelist() else None
@@ -86,6 +96,7 @@ def assemble_final_docx(
             for info in zt.infolist():
                 name = info.filename
                 if name in (
+                    "[Content_Types].xml",
                     "word/document.xml",
                     "word/_rels/document.xml.rels",
                     "word/styles.xml",
@@ -98,6 +109,7 @@ def assemble_final_docx(
                 zo.writestr(info, zt.read(name))
 
             # Write replaced parts
+            zo.writestr("[Content_Types].xml", _xml_to_bytes(types_xml))
             zo.writestr("word/document.xml", _xml_to_bytes(tmpl_doc))
             zo.writestr("word/_rels/document.xml.rels", _xml_to_bytes(tmpl_rels))
 
@@ -128,6 +140,43 @@ def _xml_to_bytes(root: ET._Element) -> bytes:
 
 def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def _content_type_for_ext(ext: str) -> str | None:
+    ext = ext.lower()
+    return {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+        "emf": "image/x-emf",
+        "wmf": "image/x-wmf",
+        "svg": "image/svg+xml",
+        "webp": "image/webp",
+    }.get(ext)
+
+
+def _ensure_content_types(types_xml: ET._Element, *, added_media: dict[str, bytes]) -> None:
+    existing = {
+        (el.get("Extension") or "").lower()
+        for el in types_xml.findall(f"{{{CT_NS}}}Default")
+    }
+
+    for target_path in added_media.keys():
+        ext = Path(target_path).suffix.lower().lstrip(".")
+        if not ext or ext in existing:
+            continue
+        content_type = _content_type_for_ext(ext)
+        if not content_type:
+            continue
+        el = ET.Element(ET.QName(CT_NS, "Default"))
+        el.set("Extension", ext)
+        el.set("ContentType", content_type)
+        types_xml.append(el)
+        existing.add(ext)
 
 
 def _merge_rels_and_media(
@@ -308,15 +357,19 @@ def _apply_cover_meta(doc: ET._Element, meta: dict) -> None:
     author = str(meta.get("author", "")).strip()
     date = str(meta.get("date", "")).strip()
 
-    repl = {
-        "T\ufffdTULO DEL DOCUMENTO": title or "T\ufffdTULO DEL DOCUMENTO",
-        "Subt\ufffdtulo del documento": subtitle or "Subt\ufffdtulo del documento",
-    }
+    repl: dict[str, str] = {}
+    if title:
+        repl["titulo del documento"] = title
+    if subtitle:
+        repl["subtitulo del documento"] = subtitle
 
-    # Replace title/subtitle placeholders
-    for t in doc.findall(".//w:t", namespaces=NS):
-        if t.text in repl:
-            t.text = repl[t.text]
+    if repl:
+        for t in doc.findall(".//w:t", namespaces=NS):
+            if not t.text:
+                continue
+            norm = _normalize_cover_text(t.text)
+            if norm in repl:
+                t.text = repl[norm]
 
     # Replace author/date lines
     for t in doc.findall(".//w:t", namespaces=NS):
@@ -324,6 +377,13 @@ def _apply_cover_meta(doc: ET._Element, meta: dict) -> None:
             t.text = f"Elaborado por: {author}"
         if t.text == "Fecha:" and date:
             t.text = f"Fecha: {date}"
+
+
+def _normalize_cover_text(text: str) -> str:
+    text = text.replace("\uFFFD", "i")
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return text.strip().lower()
 
 
 def _ensure_list_of_tables(doc: ET._Element) -> None:
@@ -401,7 +461,7 @@ def _make_toc_field_paragraph(*, style_id: str, caption_label: str) -> ET._Eleme
     return p
 
 
-def _replace_content_region(tmpl_doc: ET._Element, body_doc: ET._Element) -> None:
+def _replace_content_region(tmpl_doc: ET._Element, body_doc: ET._Element) -> list[ET._Element]:
     tmpl_body = tmpl_doc.find(".//w:body", namespaces=NS)
     body_body = body_doc.find(".//w:body", namespaces=NS)
     if tmpl_body is None or body_body is None:
@@ -449,7 +509,9 @@ def _replace_content_region(tmpl_doc: ET._Element, body_doc: ET._Element) -> Non
     for _ in range(end_idx - start_idx):
         del tmpl_children[start_idx]
     # Rebuild body children in-place
-    tmpl_body[:] = tmpl_children[:start_idx] + [copy.deepcopy(c) for c in body_children] + tmpl_children[start_idx:]
+    inserted = [copy.deepcopy(c) for c in body_children]
+    tmpl_body[:] = tmpl_children[:start_idx] + inserted + tmpl_children[start_idx:]
+    return inserted
 
 
 def _is_paragraph_style(p: ET._Element, style_id: str) -> bool:
@@ -523,6 +585,50 @@ def _replace_markers(doc: ET._Element) -> None:
             )
 
 
+def _apply_table_borders(nodes: list[ET._Element]) -> None:
+    seen: set[int] = set()
+    for tbl in _iter_tables(nodes):
+        key = id(tbl)
+        if key in seen:
+            continue
+        seen.add(key)
+        _ensure_table_borders(tbl)
+
+
+def _iter_tables(nodes: list[ET._Element]) -> list[ET._Element]:
+    out: list[ET._Element] = []
+    for node in nodes:
+        if node.tag == ET.QName(W_NS, "tbl"):
+            out.append(node)
+        out.extend(node.findall(".//w:tbl", namespaces=NS))
+    return out
+
+
+def _ensure_table_borders(tbl: ET._Element) -> None:
+    tblpr = tbl.find("w:tblPr", namespaces=NS)
+    if tblpr is None:
+        tblpr = ET.SubElement(tbl, ET.QName(W_NS, "tblPr"))
+    borders = tblpr.find("w:tblBorders", namespaces=NS)
+    if borders is None:
+        borders = ET.SubElement(tblpr, ET.QName(W_NS, "tblBorders"))
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = borders.find(f"w:{side}", namespaces=NS)
+        if el is None:
+            el = ET.SubElement(borders, ET.QName(W_NS, side))
+            _apply_border_attrs(el)
+            continue
+        val = el.get(ET.QName(W_NS, "val")) or el.get("val")
+        if val in (None, "nil", "none"):
+            _apply_border_attrs(el)
+
+
+def _apply_border_attrs(el: ET._Element) -> None:
+    el.set(ET.QName(W_NS, "val"), "single")
+    el.set(ET.QName(W_NS, "sz"), "4")
+    el.set(ET.QName(W_NS, "space"), "0")
+    el.set(ET.QName(W_NS, "color"), "auto")
+
+
 def _replace_inline_markers_in_textnode(
     t: ET._Element,
     *,
@@ -530,43 +636,36 @@ def _replace_inline_markers_in_textnode(
     tab_numbers: dict[str, int],
 ) -> None:
     txt = t.text or ""
+    matches = list(_INLINE_MARKER_RE.finditer(txt))
+    if not matches:
+        return
 
-    # REF markers
-    ref_pat = re.compile(r"\[\[MD2DOCX_REF:(fig|tab):([A-Za-z0-9_-]+)\]\]")
-    m = ref_pat.search(txt)
-    if m:
-        kind, ref_id = m.group(1), m.group(2)
-        before = txt[: m.start()]
-        after = txt[m.end() :]
-        t.text = before
-        bm = _bookmark_name(kind, ref_id)
-        if kind == "fig":
-            n = fig_numbers.get(ref_id)
-            placeholder = f"Figura {n}" if n is not None else "Figura"
+    first = matches[0]
+    t.text = txt[: first.start()]
+
+    nodes: list[ET._Element] = []
+    for idx, m in enumerate(matches):
+        kind = m.group(1)
+        if kind:
+            ref_id = m.group(2)
+            bm = _bookmark_name(kind, ref_id)
+            if kind == "fig":
+                n = fig_numbers.get(ref_id)
+                placeholder = f"Figura {n}" if n is not None else "Figura"
+            else:
+                n = tab_numbers.get(ref_id)
+                placeholder = f"Tabla {n}" if n is not None else "Tabla"
+            nodes.extend(_make_ref_field_runs(bookmark=bm, result_text=placeholder))
         else:
-            n = tab_numbers.get(ref_id)
-            placeholder = f"Tabla {n}" if n is not None else "Tabla"
+            tag = m.group(3)
+            nodes.append(_make_citation_sdt(tag=tag))
 
-        nodes = _make_ref_field_runs(bookmark=bm, result_text=placeholder)
-        if after:
-            nodes.append(_make_run_with_text(after))
-        _insert_after_textnode(t, nodes)
-        return
+        next_start = matches[idx + 1].start() if idx + 1 < len(matches) else len(txt)
+        tail = txt[m.end() : next_start]
+        if tail:
+            nodes.append(_make_run_with_text(tail))
 
-    cit_pat = re.compile(r"\[\[MD2DOCX_CITATION:([A-Za-z0-9_-]+)\]\]")
-    m = cit_pat.search(txt)
-    if m:
-        tag = m.group(1)
-        before = txt[: m.start()]
-        after = txt[m.end() :]
-        t.text = before
-        nodes: list[ET._Element] = [_make_citation_sdt(tag=tag)]
-        if after:
-            nodes.append(_make_run_with_text(after))
-        _insert_after_textnode(t, nodes)
-        return
-
-    return
+    _insert_after_textnode(t, nodes)
 
 
 def _center_captioned_figure_images(doc: ET._Element) -> None:

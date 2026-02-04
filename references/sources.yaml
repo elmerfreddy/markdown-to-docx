@@ -1,9 +1,19 @@
 sources:
-  - tag: ONU16
-    type: Book
-    title: "Nueva Agenda Urbana"
-    year: 2016
+  - tag: OWASP2021
+    type: InternetSite
+    title: "OWASP Top 10 - 2021"
+    year: 2021
     authors:
-      - corporate: "ONU-Habitat"
-    city: "Quito"
-    publisher: "ONU-Habitat"
+      - corporate: "OWASP Foundation"
+    url: "https://owasp.org/Top10/"
+    year_accessed: 2026
+    month_accessed: February
+    day_accessed: 4
+  - tag: MMAyA2024
+    type: Book
+    title: "Lineamientos de seguridad para sistemas de informacion"
+    year: 2024
+    authors:
+      - corporate: "Ministerio de Medio Ambiente y Agua"
+    city: "La Paz"
+    publisher: "Ministerio de Medio Ambiente y Agua"

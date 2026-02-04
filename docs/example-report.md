@@ -1,45 +1,60 @@
 <!--
-Este documento es un ejemplo minimo compatible con el CLI.
+Este documento es un ejemplo completo compatible con el CLI.
 -->
 
-# Informe de ejemplo
+# Informe de ejemplo completo
 
-## Introduccion
+## 1. Introduccion
 
-Este informe demuestra:
+Este informe muestra todos los componentes soportados por `md2docx`:
 
-- Figura Mermaid con caption arriba + fuente abajo
-- Tabla simple con caption arriba + fuente abajo
-- Referencias cruzadas nativas (@fig / @tab)
-- Cita Word nativa [@ONU16]
+- Mermaid
+- Imagen local
+- Tabla simple
+- Referencias cruzadas (@fig y @tab)
+- Citas APA (Word)
 
-Como se muestra en @fig:arquitectura, el flujo de datos se organiza por etapas.
+En linea con [@MMAyA2024; @OWASP2021], se establecen criterios base para seguridad y documentacion.
 
-Tambien se incluye una imagen local (ver @fig:logo).
+### 1.1 Contexto
 
-## Arquitectura
+#### 1.1.1 Alcance
 
-<!--figure id=arquitectura title="Arquitectura del backend" source="Elaboracion propia"-->
+El objetivo es demostrar la estructura minima requerida para generar DOCX con campos nativos.
+
+## 2. Figuras
+
+Como se muestra en @fig:arquitectura-backend, el flujo de datos sigue etapas claras.
+Tambien se incluye una imagen local (ver @fig:logo-sigir).
+
+### 2.1 Arquitectura
+
+<!--figure id=arquitectura-backend title="Arquitectura del backend" source="Elaboracion propia"-->
 ```mermaid
 flowchart TD
-  UI[UI] --> API[API]
+  UI[Frontend] --> API[API]
   API --> DB[(Base de datos)]
+  API --> S3[(Almacenamiento)]
 ```
 
-<!--figure id=logo title="Logo de ejemplo" source="Elaboracion propia"-->
+### 2.2 Identidad visual
+
+<!--figure id=logo-sigir title="Logo de ejemplo" source="Elaboracion propia"-->
 ![](docs/assets/images/example.png)
 
-## Stack tecnologico
+## 3. Tablas
 
-<!--table id=stack title="Stack tecnologico" source="Elaboracion propia"-->
+<!--table id=stack-tec title="Stack tecnologico" source="Elaboracion propia"-->
 | Componente | Tecnologia |
 |---|---|
 | API | Django REST |
-| BD  | PostgreSQL |
+| BD | PostgreSQL |
 | Cache | Redis |
+| Infra | Docker + Nginx |
 
-Ver @tab:stack para el detalle del stack.
+Ver @tab:stack-tec para el detalle del stack.
 
-## Cierre
+## 4. Citas
 
-Segun [@ONU16], la transformacion urbana requiere un marco de gobernanza y financiamiento.
+Las practicas recomendadas se resumen en [@OWASP2021].
+El marco institucional se documenta en [@MMAyA2024].

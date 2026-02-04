@@ -20,6 +20,10 @@ class BibSource:
     city: str | None = None
     publisher: str | None = None
     authors: list[dict[str, str]] | None = None
+    url: str | None = None
+    year_accessed: str | None = None
+    month_accessed: str | None = None
+    day_accessed: str | None = None
 
 
 def load_sources_yaml(path: Path) -> list[BibSource]:
@@ -39,6 +43,22 @@ def load_sources_yaml(path: Path) -> list[BibSource]:
                     str(raw.get("publisher")).strip() if raw.get("publisher") is not None else None
                 ),
                 authors=(raw.get("authors") or None),
+                url=(str(raw.get("url")).strip() if raw.get("url") is not None else None),
+                year_accessed=(
+                    str(raw.get("year_accessed")).strip()
+                    if raw.get("year_accessed") is not None
+                    else None
+                ),
+                month_accessed=(
+                    str(raw.get("month_accessed")).strip()
+                    if raw.get("month_accessed") is not None
+                    else None
+                ),
+                day_accessed=(
+                    str(raw.get("day_accessed")).strip()
+                    if raw.get("day_accessed") is not None
+                    else None
+                ),
             )
         )
     return [s for s in out if s.tag]
@@ -87,6 +107,14 @@ def _source_to_xml(src: BibSource, *, ref_order: int) -> ET._Element:
         ET.SubElement(s_el, ET.QName(BIB_NS, "City")).text = src.city
     if src.publisher:
         ET.SubElement(s_el, ET.QName(BIB_NS, "Publisher")).text = src.publisher
+    if src.url:
+        ET.SubElement(s_el, ET.QName(BIB_NS, "URL")).text = src.url
+    if src.year_accessed:
+        ET.SubElement(s_el, ET.QName(BIB_NS, "YearAccessed")).text = src.year_accessed
+    if src.month_accessed:
+        ET.SubElement(s_el, ET.QName(BIB_NS, "MonthAccessed")).text = src.month_accessed
+    if src.day_accessed:
+        ET.SubElement(s_el, ET.QName(BIB_NS, "DayAccessed")).text = src.day_accessed
 
     ET.SubElement(s_el, ET.QName(BIB_NS, "RefOrder")).text = str(ref_order)
     return s_el

@@ -31,6 +31,7 @@ class ValidationReport:
 _FIG_DIRECTIVE_RE = re.compile(r"^<!--\s*figure\s+(.*?)\s*-->\s*$", re.M)
 _TAB_DIRECTIVE_RE = re.compile(r"^<!--\s*table\s+(.*?)\s*-->\s*$", re.M)
 _MERMAID_FENCE_RE = re.compile(r"^```mermaid\s*$", re.M)
+_CITATION_GROUP_RE = re.compile(r"\[(?P<content>[^\[\]]*?@[^\]]*?)\]")
 
 
 def _parse_kv(s: str) -> dict[str, str]:
@@ -54,6 +55,14 @@ def _load_sources_tags(sources_path: Path) -> set[str]:
         tag = src.get("tag")
         if tag:
             tags.add(str(tag))
+    return tags
+
+
+def _extract_citation_tags(text: str) -> list[str]:
+    tags: list[str] = []
+    for m in _CITATION_GROUP_RE.finditer(text):
+        content = m.group("content")
+        tags.extend(re.findall(r"-?@([A-Za-z0-9_-]+)", content))
     return tags
 
 
@@ -110,7 +119,7 @@ def validate_project(input_md: Path, *, sources_path: Path, strict: bool) -> Val
     tags = _load_sources_tags(sources_path)
     if not tags:
         warnings.append(f"no sources loaded from {sources_path}")
-    for tag in re.findall(r"\[@([A-Za-z0-9_-]+)\]", txt):
+    for tag in _extract_citation_tags(txt):
         if tag not in tags:
             errors.append(f"citation tag not found in sources: {tag}")
 

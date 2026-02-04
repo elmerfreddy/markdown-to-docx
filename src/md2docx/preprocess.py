@@ -19,6 +19,7 @@ class PreprocessResult:
 
 _FIG_DIRECTIVE_RE = re.compile(r"^<!--\s*figure\s+(.*?)\s*-->\s*$")
 _TAB_DIRECTIVE_RE = re.compile(r"^<!--\s*table\s+(.*?)\s*-->\s*$")
+_CITATION_GROUP_RE = re.compile(r"\[(?P<content>[^\[\]]*?@[^\]]*?)\]")
 
 # Target figure sizing in the generated DOCX.
 # Keep Mermaid diagrams readable without overflowing page height.
@@ -71,9 +72,23 @@ def _replace_inline_tokens(text: str) -> str:
     # Cross refs
     text = re.sub(r"@fig:([A-Za-z0-9_-]+)", r"[[MD2DOCX_REF:fig:\1]]", text)
     text = re.sub(r"@tab:([A-Za-z0-9_-]+)", r"[[MD2DOCX_REF:tab:\1]]", text)
-    # Citations (simple form)
-    text = re.sub(r"\[@([A-Za-z0-9_-]+)\]", r"[[MD2DOCX_CITATION:\1]]", text)
+    # Citations (Pandoc-style bracket groups)
+    text = _replace_citation_groups(text)
     return text
+
+
+def _replace_citation_groups(text: str) -> str:
+    def repl(m: re.Match[str]) -> str:
+        content = m.group("content")
+
+        def repl_tag(mt: re.Match[str]) -> str:
+            tag = mt.group(1)
+            return f"[[MD2DOCX_CITATION:{tag}]]"
+
+        # Replace any @tag or -@tag with a placeholder.
+        return re.sub(r"-?@([A-Za-z0-9_-]+)", repl_tag, content)
+
+    return _CITATION_GROUP_RE.sub(repl, text)
 
 
 def preprocess_markdown(*, input_md: Path, out_dir: Path, media_dir: Path) -> PreprocessResult:
