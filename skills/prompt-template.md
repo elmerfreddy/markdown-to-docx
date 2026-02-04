@@ -5,15 +5,15 @@ Usa este prompt con un agente si quieres que el contenido salga 100% compatible 
 ```
 Escribe un documento en Markdown (GFM) con estas reglas:
 
-- Headings maximo 4 niveles (#, ##, ###, ####)
+- Headings máximo 4 niveles (#, ##, ###, ####)
 - Para cualquier figura numerada:
-  - Antes de la figura agrega: <!--figure id=<id> title="<titulo>" source="<fuente>"-->
+  - Antes de la figura agrega: <!--figure id=<id> title="<título>" source="<fuente>"-->
   - Luego agrega o una imagen ![](ruta) o un bloque ```mermaid
 - Para cualquier tabla numerada:
-  - Antes de la tabla agrega: <!--table id=<id> title="<titulo>" source="<fuente>"-->
+  - Antes de la tabla agrega: <!--table id=<id> title="<título>" source="<fuente>"-->
   - La tabla debe ser pipe table simple
 - Para referencias cruzadas usa @fig:<id> y @tab:<id>
-- Para citas usa [@TAG]
+- Para citas usa [@TAG] (puede ser múltiple: [@TAG1; @TAG2] o [-@TAG])
 
 Devuelve solo el Markdown.
 ```

@@ -82,6 +82,12 @@ def assemble_final_docx(
         # Ensure tables in body content have borders.
         _apply_table_borders(inserted_nodes)
 
+        # Center tables and bold header rows.
+        _format_tables(inserted_nodes)
+
+        # Center and italicize source lines ("Fuente: ...") in body content.
+        _format_source_paragraphs(inserted_nodes)
+
         # Bibliography sources customXml
         item1_xml = zt.read("customXml/item1.xml") if "customXml/item1.xml" in zt.namelist() else None
         new_item1_xml = (
@@ -627,6 +633,114 @@ def _apply_border_attrs(el: ET._Element) -> None:
     el.set(ET.QName(W_NS, "sz"), "4")
     el.set(ET.QName(W_NS, "space"), "0")
     el.set(ET.QName(W_NS, "color"), "auto")
+
+
+def _format_tables(nodes: list[ET._Element]) -> None:
+    seen: set[int] = set()
+    for tbl in _iter_tables(nodes):
+        key = id(tbl)
+        if key in seen:
+            continue
+        seen.add(key)
+        _center_table(tbl)
+        _bold_table_header(tbl)
+
+
+def _center_table(tbl: ET._Element) -> None:
+    tblpr = tbl.find("w:tblPr", namespaces=NS)
+    if tblpr is None:
+        tblpr = ET.SubElement(tbl, ET.QName(W_NS, "tblPr"))
+    jc = tblpr.find("w:jc", namespaces=NS)
+    if jc is None:
+        jc = ET.SubElement(tblpr, ET.QName(W_NS, "jc"))
+    jc.set(ET.QName(W_NS, "val"), "center")
+
+
+def _bold_table_header(tbl: ET._Element) -> None:
+    rows = tbl.findall("./w:tr", namespaces=NS)
+    if not rows:
+        return
+    header = rows[0]
+    for r in header.findall(".//w:r", namespaces=NS):
+        _ensure_run_bold(r)
+
+
+def _ensure_run_bold(r: ET._Element) -> None:
+    rpr = r.find("w:rPr", namespaces=NS)
+    if rpr is None:
+        rpr = ET.Element(ET.QName(W_NS, "rPr"))
+        r.insert(0, rpr)
+    elif list(r).index(rpr) != 0:
+        r.remove(rpr)
+        r.insert(0, rpr)
+
+    b = rpr.find("w:b", namespaces=NS)
+    if b is None:
+        b = ET.SubElement(rpr, ET.QName(W_NS, "b"))
+    b.set(ET.QName(W_NS, "val"), "1")
+
+    b_cs = rpr.find("w:bCs", namespaces=NS)
+    if b_cs is None:
+        b_cs = ET.SubElement(rpr, ET.QName(W_NS, "bCs"))
+    b_cs.set(ET.QName(W_NS, "val"), "1")
+
+
+def _format_source_paragraphs(nodes: list[ET._Element]) -> None:
+    seen: set[int] = set()
+    for p in _iter_paragraphs(nodes):
+        key = id(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        text = _paragraph_text(p).strip()
+        if not text.lower().startswith("fuente:"):
+            continue
+        _center_paragraph(p)
+        _italicize_paragraph_runs(p)
+
+
+def _iter_paragraphs(nodes: list[ET._Element]) -> list[ET._Element]:
+    out: list[ET._Element] = []
+    for node in nodes:
+        if node.tag == ET.QName(W_NS, "p"):
+            out.append(node)
+        out.extend(node.findall(".//w:p", namespaces=NS))
+    return out
+
+
+def _paragraph_text(p: ET._Element) -> str:
+    return "".join([t.text or "" for t in p.findall(".//w:t", namespaces=NS)])
+
+
+def _center_paragraph(p: ET._Element) -> None:
+    ppr = p.find("w:pPr", namespaces=NS)
+    if ppr is None:
+        ppr = ET.SubElement(p, ET.QName(W_NS, "pPr"))
+    jc = ppr.find("w:jc", namespaces=NS)
+    if jc is None:
+        jc = ET.SubElement(ppr, ET.QName(W_NS, "jc"))
+    jc.set(ET.QName(W_NS, "val"), "center")
+
+
+def _italicize_paragraph_runs(p: ET._Element) -> None:
+    for r in p.findall("./w:r", namespaces=NS):
+        rpr = r.find("w:rPr", namespaces=NS)
+        if rpr is None:
+            rpr = ET.Element(ET.QName(W_NS, "rPr"))
+            r.insert(0, rpr)
+        elif list(r).index(rpr) != 0:
+            r.remove(rpr)
+            r.insert(0, rpr)
+
+        i = rpr.find("w:i", namespaces=NS)
+        if i is None:
+            i = ET.SubElement(rpr, ET.QName(W_NS, "i"))
+        i.set(ET.QName(W_NS, "val"), "1")
+
+        i_cs = rpr.find("w:iCs", namespaces=NS)
+        if i_cs is None:
+            i_cs = ET.SubElement(rpr, ET.QName(W_NS, "iCs"))
+        i_cs.set(ET.QName(W_NS, "val"), "1")
 
 
 def _replace_inline_markers_in_textnode(

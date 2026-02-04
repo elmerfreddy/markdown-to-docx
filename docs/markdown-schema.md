@@ -3,15 +3,15 @@
 Este esquema permite:
 
 - Render agradable en GitHub (GFM)
-- Conversion a Word con captions/numeracion/listas/refs/citas nativas
+- Conversión a Word con captions/numeración/listas/refs/citas nativas
 
 ## 1. Metadata (recomendado)
 
-En vez de YAML front matter (que GitHub muestra), usar `meta.yaml`:
+En vez de YAML front matter (que GitHub muestra), usar un archivo `meta.yaml`:
 
 ```yaml
-title: "TITULO DEL DOCUMENTO"
-subtitle: "Subtitulo del documento"
+title: "TÍTULO DEL DOCUMENTO"
+subtitle: "Subtítulo del documento"
 author: "Nombre Apellido"
 date: "2026-01-28"
 lang: "es-EC"
@@ -20,10 +20,10 @@ lang: "es-EC"
 ## 2. Headings (niveles 1-4)
 
 ```md
-# Titulo 1
-## Titulo 2
-### Titulo 3
-#### Titulo 4
+# Título 1
+## Título 2
+### Título 3
+#### Título 4
 ```
 
 Se mapean a estilos de la plantilla (Heading1-Heading4).
@@ -35,7 +35,7 @@ Regla: cada figura que deba numerarse y entrar en la lista debe declararse con d
 ### 3.1 Figura con Mermaid
 
 ```md
-<!--figure id=arquitectura title="Arquitectura del backend" source="Elaboracion propia"-->
+<!--figure id=arquitectura title="Arquitectura del backend" source="Elaboración propia"-->
 ```mermaid
 graph TD
   A-->B
@@ -44,15 +44,15 @@ graph TD
 
 El CLI renderiza Mermaid a PNG (fondo transparente) e inserta:
 
-- Caption arriba: `Figura {SEQ Figura}. <titulo>` (estilo Caption)
+- Caption arriba: `Figura {SEQ Figura}. <título>` (estilo Caption)
 - Imagen
 - Fuente abajo: `Fuente: ...` (estilo Normal)
 
 ### 3.2 Figura con imagen local
 
 ```md
-<!--figure id=mapa title="Mapa de cobertura" source="Institucion X (2024)"-->
-![](docs/assets/images/mapa.png)
+<!--figure id=mapa title="Mapa de cobertura" source="Institución X (2024)"-->
+![](assets/images/mapa.png)
 ```
 
 ## 4. Tablas
@@ -60,8 +60,8 @@ El CLI renderiza Mermaid a PNG (fondo transparente) e inserta:
 Regla: cada tabla que deba numerarse y entrar en la lista debe declararse con directiva `<!--table ...-->`.
 
 ```md
-<!--table id=stack title="Stack tecnologico" source="Elaboracion propia"-->
-| Componente | Tecnologia |
+<!--table id=stack title="Stack tecnológico" source="Elaboración propia"-->
+| Componente | Tecnología |
 |---|---|
 | API | Django REST |
 | BD  | PostgreSQL |
@@ -69,7 +69,7 @@ Regla: cada tabla que deba numerarse y entrar en la lista debe declararse con di
 
 Salida:
 
-- Caption arriba: `Tabla {SEQ Tabla}. <titulo>` (estilo Caption)
+- Caption arriba: `Tabla {SEQ Tabla}. <título>` (estilo Caption)
 - Tabla
 - Fuente abajo
 
@@ -89,21 +89,23 @@ Ver @tab:stack para el stack.
 
 El CLI los convierte a campos `REF` nativos.
 
-## 6. Citas y bibliografia (Word nativo)
+## 6. Citas y bibliografía (Word nativo)
 
-En el Markdown, usa citas tipo Pandoc:
+En el Markdown, usa citas tipo Pandoc (soporta múltiples en un mismo bloque):
 
 ```md
-Segun [@ONU16], ...
+Según [@ONU16], ...
+Ver también [@ONU16; @OWASP2021] y [-@OWASP2021].
 ```
 
-Y define las fuentes en `references/sources.yaml`.
+Y define las fuentes en el archivo que pases con `--sources`
+(ejemplo: `examples/example-report/sources.yaml`).
 
 Notas:
 
 - El estilo APA es el que trae la plantilla Word.
-- La bibliografia se genera con el campo `BIBLIOGRAPHY` ya incluido en la plantilla.
+- La bibliografía se genera con el campo `BIBLIOGRAPHY` ya incluido en la plantilla.
 
-Recomendacion:
+Recomendación:
 
-- No escribas una seccion final titulada "Referencias" en el Markdown. La plantilla ya incluye la seccion "Referencias" + bibliografia automatica.
+- No escribas una sección final titulada "Referencias" en el Markdown. La plantilla ya incluye la sección "Referencias" + bibliografía automática.

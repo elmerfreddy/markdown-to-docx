@@ -3,7 +3,8 @@
 El comando `md2docx validate` debe fallar si:
 
 - Hay `@fig:<id>` o `@tab:<id>` que no exista
-- Hay `[@TAG]` sin fuente en `references/sources.yaml`
+- Hay citas `[@TAG]`, `[@TAG1; @TAG2]` o `[-@TAG]` sin fuente en el archivo
+  pasado con `--sources` (ejemplo: `examples/example-report/sources.yaml`)
 - Hay ids duplicados en figuras/tablas
 - Hay Mermaid ` ```mermaid ` sin una directiva `<!--figure ...-->` inmediatamente antes
 

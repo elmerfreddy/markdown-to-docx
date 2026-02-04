@@ -11,7 +11,7 @@ sources:
     day_accessed: 4
   - tag: MMAyA2024
     type: Book
-    title: "Lineamientos de seguridad para sistemas de informacion"
+    title: "Lineamientos de seguridad para sistemas de información"
     year: 2024
     authors:
       - corporate: "Ministerio de Medio Ambiente y Agua"
