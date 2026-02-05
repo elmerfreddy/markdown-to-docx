@@ -10,6 +10,7 @@ Reglas:
   - Siempre precede la figura con `<!--figure ...-->`
   - Campos obligatorios: `id`, `title`, `source`
   - Para Mermaid: fence ` ```mermaid ` inmediatamente después de la directiva
+  - Para snippet de código: fence ` ```<lenguaje> ` inmediatamente después de la directiva
   - Para imagen: `![](ruta/relativa.png)` inmediatamente después de la directiva
 - Tablas numeradas:
   - Siempre precede la tabla con `<!--table ...-->`

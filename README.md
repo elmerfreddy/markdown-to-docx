@@ -10,6 +10,7 @@ Objetivos no negociables (diseño):
 - Numeración nativa de figuras y tablas (campos `SEQ`)
 - Referencias cruzadas nativas (campos `REF`)
 - Citas y bibliografía nativas de Word (campos `CITATION` y `BIBLIOGRAPHY` + `customXml` de fuentes)
+- Snippets de código como figuras (PNG con resaltado y números de línea)
 
 La salida queda lista para abrir en Word y actualizar campos (`Ctrl+A` luego `F9`).
 
@@ -35,6 +36,8 @@ La salida queda lista para abrir en Word y actualizar campos (`Ctrl+A` luego `F9
 Ejemplo completo en `examples/example-report/`.
 
 Ver `docs/markdown-schema.md`.
+
+Soporta figuras con Mermaid, imágenes locales y snippets de código si se marcan con `<!--figure ...-->`.
 
 ## Instalación (dev)
 
@@ -104,6 +107,17 @@ Windows (PowerShell):
 
 ```bash
 docker run --rm -v "${PWD}:/work" md2docx:local build \
+  examples/example-report/example-report.md \
+  --template templates/Formato_GIRS.docx \
+  --meta examples/example-report/meta.yaml \
+  --sources examples/example-report/sources.yaml \
+  --output build/example-report.docx
+```
+
+Si la ruta no se monta, usa la ruta absoluta con backslashes:
+
+```bash
+docker run --rm -v "C:\\Users\\<usuario>\\ruta\\al\\repo:/work" md2docx:local build \
   examples/example-report/example-report.md \
   --template templates/Formato_GIRS.docx \
   --meta examples/example-report/meta.yaml \

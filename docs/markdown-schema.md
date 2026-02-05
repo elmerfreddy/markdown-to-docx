@@ -55,6 +55,19 @@ El CLI renderiza Mermaid a PNG (fondo transparente) e inserta:
 ![](assets/images/mapa.png)
 ```
 
+### 3.3 Figura con snippet de código
+
+```md
+<!--figure id=snippet-ejemplo title="Ejemplo TypeScript: useTerritorialContext()" source="Elaboración propia"-->
+```typescript
+export const useTerritorialContext = () => {
+  // ...
+}
+```
+```
+
+El CLI renderiza el snippet a PNG con resaltado por lenguaje y números de línea.
+
 ## 4. Tablas
 
 Regla: cada tabla que deba numerarse y entrar en la lista debe declararse con directiva `<!--table ...-->`.

@@ -7,6 +7,7 @@ Este documento describe cómo funciona el CLI `md2docx` para cumplir los requisi
 Entrada: Markdown tipo GitHub (GFM) con:
 
 - Mermaid
+- snippets de código como figuras (opcional)
 - tablas simples
 - imágenes locales
 - citas
@@ -48,7 +49,7 @@ Marcadores internos (no se escriben manualmente):
 - `[[MD2DOCX_REF:fig:<id>]]` / `[[MD2DOCX_REF:tab:<id>]]`
 - `[[MD2DOCX_CITATION:<tag>]]`
 
-Mermaid se renderiza a PNG antes de llamar a pandoc.
+Mermaid y snippets de código (cuando van precedidos por `<!--figure ...-->`) se renderizan a PNG antes de llamar a pandoc.
 
 ## Ensamble DOCX
 
