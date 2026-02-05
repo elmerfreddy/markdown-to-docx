@@ -76,6 +76,41 @@ python -m md2docx.cli build examples/example-report/example-report.md \
 
 Luego abre `build/example-report.docx` y ejecuta "Actualizar campos".
 
+## Uso con Docker
+
+Construir la imagen:
+
+```bash
+docker build -t md2docx:local .
+```
+
+Generar DOCX (monta el repo en `/work`):
+
+Linux/macOS (Bash):
+
+```bash
+docker run --rm \
+  -v "$(pwd):/work" \
+  --user "$(id -u):$(id -g)" \
+  md2docx:local build \
+  examples/example-report/example-report.md \
+  --template templates/Formato_GIRS.docx \
+  --meta examples/example-report/meta.yaml \
+  --sources examples/example-report/sources.yaml \
+  --output build/example-report.docx
+```
+
+Windows (PowerShell):
+
+```bash
+docker run --rm -v "${PWD}:/work" md2docx:local build \
+  examples/example-report/example-report.md \
+  --template templates/Formato_GIRS.docx \
+  --meta examples/example-report/meta.yaml \
+  --sources examples/example-report/sources.yaml \
+  --output build/example-report.docx
+```
+
 ## Skills (para autores/agents)
 
 El repositorio incluye guías ("agent skills") para producir Markdown compatible:

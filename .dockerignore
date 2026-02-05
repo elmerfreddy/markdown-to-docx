@@ -1,0 +1,9 @@
+.git
+.venv
+node_modules
+build
+dist
+*.egg-info
+.md2docx
+tmp_*.md
+tmp_*.docx
