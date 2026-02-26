@@ -10,7 +10,7 @@ import unicodedata
 from lxml import etree as ET
 import yaml
 
-from md2docx.bibliography import build_sources_customxml, load_sources_yaml
+from md2docx.bibliography import BibSource, build_sources_customxml, load_sources_yaml
 
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -85,8 +85,23 @@ def assemble_final_docx(
         # Center tables and bold header rows.
         _format_tables(inserted_nodes)
 
+        # Keep tables together with their caption and source line.
+        _keep_tables_with_surroundings(inserted_nodes)
+
         # Center and italicize source lines ("Fuente: ...") in body content.
         _format_source_paragraphs(inserted_nodes)
+
+        # Start each Heading1 on a new page.
+        _page_break_before_heading1(inserted_nodes)
+
+        # Cap oversized images to fit within page height.
+        _cap_image_heights(inserted_nodes)
+
+        # Clear placeholder text from TOC/List of Figures/Tables fields.
+        _clear_toc_placeholders(tmpl_doc)
+
+        # Replace cached BIBLIOGRAPHY field text with actual sources.
+        _replace_bibliography_cache(tmpl_doc, sources)
 
         # Bibliography sources customXml
         item1_xml = zt.read("customXml/item1.xml") if "customXml/item1.xml" in zt.namelist() else None
@@ -95,6 +110,13 @@ def assemble_final_docx(
             if item1_xml is not None
             else None
         )
+
+        # Apply color swatches to cells containing hex color codes.
+        _apply_color_swatches(inserted_nodes)
+
+        settings_xml = _xml_from_bytes(zt.read("word/settings.xml"))
+        _set_settings_language(settings_xml, meta.get("lang", "es-BO"))
+        _ensure_update_fields(settings_xml)
 
         # Build output package
         output_docx.parent.mkdir(parents=True, exist_ok=True)
@@ -109,6 +131,7 @@ def assemble_final_docx(
                     "word/numbering.xml",
                     "word/footnotes.xml",
                     "word/endnotes.xml",
+                    "word/settings.xml",
                     "customXml/item1.xml",
                 ):
                     continue
@@ -120,12 +143,18 @@ def assemble_final_docx(
             zo.writestr("word/_rels/document.xml.rels", _xml_to_bytes(tmpl_rels))
 
             # Use pandoc-generated styles/numbering for list fidelity
-            zo.writestr("word/styles.xml", zb.read("word/styles.xml"))
+            styles_xml = _xml_from_bytes(zb.read("word/styles.xml"))
+            _set_document_language(styles_xml, meta.get("lang", "es-BO"))
+            _add_heading_spacing(styles_xml)
+            zo.writestr("word/styles.xml", _xml_to_bytes(styles_xml))
             zo.writestr("word/numbering.xml", zb.read("word/numbering.xml"))
 
             # Notes
             zo.writestr("word/footnotes.xml", new_footnotes_xml)
             zo.writestr("word/endnotes.xml", new_endnotes_xml)
+
+            # Settings (with updateFields=true)
+            zo.writestr("word/settings.xml", _xml_to_bytes(settings_xml))
 
             if new_item1_xml is not None:
                 zo.writestr("customXml/item1.xml", new_item1_xml)
@@ -635,6 +664,39 @@ def _apply_border_attrs(el: ET._Element) -> None:
     el.set(ET.QName(W_NS, "color"), "auto")
 
 
+_MAX_TABLE_ROWS_KEEP_TOGETHER = 12
+
+
+def _keep_tables_with_surroundings(nodes: list[ET._Element]) -> None:
+    """Prevent table rows from splitting and keep small tables on one page.
+
+    For ALL tables:
+      - cantSplit on every row (prevents a single row from breaking across pages).
+    For small tables (≤ _MAX_TABLE_ROWS_KEEP_TOGETHER rows):
+      - keepNext on every row's paragraphs so the whole table stays on one page.
+    For ALL tables:
+      - keepNext on last row's paragraphs to stay with the source line below.
+    """
+    for tbl in _iter_tables(nodes):
+        rows = tbl.findall("./w:tr", namespaces=NS)
+        if not rows:
+            continue
+        small = len(rows) <= _MAX_TABLE_ROWS_KEEP_TOGETHER
+        for idx, row in enumerate(rows):
+            # Prevent row from splitting across pages.
+            trpr = row.find("w:trPr", namespaces=NS)
+            if trpr is None:
+                trpr = ET.SubElement(row, ET.QName(W_NS, "trPr"))
+                row.insert(0, trpr)
+            if trpr.find("w:cantSplit", namespaces=NS) is None:
+                ET.SubElement(trpr, ET.QName(W_NS, "cantSplit"))
+            # For small tables OR the last row: keepNext to stay together.
+            is_last = idx == len(rows) - 1
+            if small or is_last:
+                for p in row.findall(".//w:p", namespaces=NS):
+                    _ensure_keep_next(p)
+
+
 def _format_tables(nodes: list[ET._Element]) -> None:
     seen: set[int] = set()
     for tbl in _iter_tables(nodes):
@@ -743,6 +805,329 @@ def _italicize_paragraph_runs(p: ET._Element) -> None:
         i_cs.set(ET.QName(W_NS, "val"), "1")
 
 
+def _page_break_before_heading1(nodes: list[ET._Element]) -> None:
+    """Add pageBreakBefore to every Heading1 paragraph so each section starts on a new page."""
+    for node in nodes:
+        targets = [node] if _is_paragraph_style(node, "Heading1") else []
+        targets.extend(
+            p for p in node.findall(".//w:p", namespaces=NS)
+            if _is_paragraph_style(p, "Heading1")
+        )
+        for p in targets:
+            ppr = p.find("w:pPr", namespaces=NS)
+            if ppr is None:
+                ppr = ET.SubElement(p, ET.QName(W_NS, "pPr"))
+                p.insert(0, ppr)
+            if ppr.find("w:pageBreakBefore", namespaces=NS) is None:
+                ET.SubElement(ppr, ET.QName(W_NS, "pageBreakBefore"))
+
+
+def _ensure_keep_next(p: ET._Element) -> None:
+    """Add w:keepNext to a paragraph so it stays on the same page as the next element."""
+    ppr = p.find("w:pPr", namespaces=NS)
+    if ppr is None:
+        ppr = ET.SubElement(p, ET.QName(W_NS, "pPr"))
+        p.insert(0, ppr)
+    kn = ppr.find("w:keepNext", namespaces=NS)
+    if kn is None:
+        ET.SubElement(ppr, ET.QName(W_NS, "keepNext"))
+
+
+WP_NS = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+# Maximum image height in EMUs (5.5 inches).  Page is ~11in - 1.18in*2 margins = 8.64in usable.
+# 5.5in leaves comfortable room for caption + source line without dominating the page.
+_MAX_IMAGE_HEIGHT_EMU = int(5.5 * 914400)
+
+
+def _cap_image_heights(nodes: list[ET._Element]) -> None:
+    """Constrain images that exceed the maximum page height, preserving aspect ratio."""
+    for node in nodes:
+        for drawing in list(node.findall(".//w:drawing", namespaces=NS)):
+            for container in list(drawing):
+                # wp:inline or wp:anchor
+                extent = container.find(f"{{{WP_NS}}}extent")
+                if extent is None:
+                    continue
+                cx = int(extent.get("cx", "0"))
+                cy = int(extent.get("cy", "0"))
+                if cy <= _MAX_IMAGE_HEIGHT_EMU or cy == 0:
+                    continue
+                ratio = _MAX_IMAGE_HEIGHT_EMU / cy
+                new_cx = int(cx * ratio)
+                new_cy = _MAX_IMAGE_HEIGHT_EMU
+                extent.set("cx", str(new_cx))
+                extent.set("cy", str(new_cy))
+                # Also update a:ext inside the graphic
+                for a_ext in container.findall(f".//{{{A_NS}}}ext"):
+                    a_cx = int(a_ext.get("cx", "0"))
+                    a_cy = int(a_ext.get("cy", "0"))
+                    if a_cy > _MAX_IMAGE_HEIGHT_EMU:
+                        a_ext.set("cx", str(int(a_cx * ratio)))
+                        a_ext.set("cy", str(new_cy))
+
+
+def _clear_toc_placeholders(doc: ET._Element) -> None:
+    """Remove placeholder entries from TOC fields so they show empty until updated in Word.
+
+    TOC fields embed cached results (hyperlinks, runs) between the 'separate'
+    and 'end' fldChar markers.  These can live inside the same paragraph as the
+    field instruction or in subsequent paragraphs.  We strip both cases.
+    """
+    for instr in doc.xpath("//w:instrText[contains(., 'TOC')]", namespaces=NS):
+        p = instr.getparent()
+        while p is not None and p.tag != ET.QName(W_NS, "p"):
+            p = p.getparent()
+        if p is None:
+            continue
+
+        # Remove hyperlinks and runs between separate and end within the paragraph.
+        # Track field nesting depth since TOC entries contain nested PAGEREF fields.
+        depth = 0
+        saw_separate = False
+        to_remove: list[ET._Element] = []
+        for child in list(p):
+            if child.tag == ET.QName(W_NS, "pPr"):
+                continue
+            for fc in child.findall(".//w:fldChar", namespaces=NS):
+                ft = fc.get(ET.QName(W_NS, "fldCharType"))
+                if ft == "begin":
+                    depth += 1
+                elif ft == "separate" and depth == 1:
+                    saw_separate = True
+                elif ft == "end":
+                    depth -= 1
+            # Hyperlinks are the cached TOC entries — remove them.
+            if saw_separate and child.tag == ET.QName(W_NS, "hyperlink"):
+                to_remove.append(child)
+        for el in to_remove:
+            p.remove(el)
+
+        # Also remove subsequent paragraphs that belong to the cached result.
+        # These can have styles: TableofFigures, TOC1, TOC2, TOC3, etc.
+        # IMPORTANT: The fldChar "end" for the TOC field may live in one of
+        # these sibling paragraphs.  We must preserve it by appending it to
+        # the field paragraph before deleting the siblings.
+        _TOC_STYLES = {"TableofFigures", "TOC1", "TOC2", "TOC3", "TOC4"}
+        body = p.getparent()
+        if body is None:
+            continue
+        p_idx = list(body).index(p)
+        sibling_remove: list[ET._Element] = []
+        found_end = False
+        for sibling in list(body)[p_idx + 1:]:
+            if sibling.tag != ET.QName(W_NS, "p"):
+                break
+            pstyle = sibling.find("./w:pPr/w:pStyle", namespaces=NS)
+            style_val = pstyle.get(ET.QName(W_NS, "val")) if pstyle is not None else ""
+            if style_val in _TOC_STYLES or not "".join(
+                t.text or "" for t in sibling.findall(".//w:t", namespaces=NS)
+            ).strip():
+                # Before removing, check if this paragraph has the field end.
+                if not found_end:
+                    for fc in sibling.findall(".//w:fldChar", namespaces=NS):
+                        if fc.get(ET.QName(W_NS, "fldCharType")) == "end":
+                            found_end = True
+                            break
+                sibling_remove.append(sibling)
+            else:
+                break
+
+        for el in sibling_remove:
+            body.remove(el)
+
+        # Ensure the field paragraph has a closing fldChar end.
+        has_end = any(
+            fc.get(ET.QName(W_NS, "fldCharType")) == "end"
+            for fc in p.findall(".//w:fldChar", namespaces=NS)
+        )
+        if not has_end:
+            r_end = ET.SubElement(p, ET.QName(W_NS, "r"))
+            ET.SubElement(r_end, ET.QName(W_NS, "fldChar"),
+                          attrib={ET.QName(W_NS, "fldCharType"): "end"})
+
+
+def _format_bib_entry(src: BibSource) -> str:
+    """Format a BibSource as APA-like plain text for cached BIBLIOGRAPHY display."""
+    parts: list[str] = []
+    # Author
+    if src.authors:
+        names: list[str] = []
+        for a in src.authors:
+            if "corporate" in a and a["corporate"]:
+                names.append(str(a["corporate"]))
+            elif "last" in a:
+                first = str(a.get("first", ""))
+                last = str(a["last"])
+                names.append(f"{last}, {first[0]}." if first else last)
+        parts.append("; ".join(names))
+    # Year
+    if src.year:
+        parts.append(f"({src.year})")
+    # Title
+    if src.title:
+        parts.append(f"{src.title}.")
+    # URL + access date
+    if src.url:
+        access = ""
+        if src.year_accessed:
+            access = f" [Accedido: {src.day_accessed or ''} {src.month_accessed or ''} {src.year_accessed}]"
+        parts.append(f"Obtenido de {src.url}{access}")
+    return " ".join(parts)
+
+
+def _make_bib_paragraph(text: str) -> ET._Element:
+    """Create a Bibliography-styled paragraph with the given text."""
+    new_p = ET.Element(ET.QName(W_NS, "p"))
+    ppr = ET.SubElement(new_p, ET.QName(W_NS, "pPr"))
+    ps = ET.SubElement(ppr, ET.QName(W_NS, "pStyle"))
+    ps.set(ET.QName(W_NS, "val"), "Bibliography")
+    ind = ET.SubElement(ppr, ET.QName(W_NS, "ind"))
+    ind.set(ET.QName(W_NS, "left"), "720")
+    ind.set(ET.QName(W_NS, "hanging"), "720")
+    r = ET.SubElement(new_p, ET.QName(W_NS, "r"))
+    rpr = ET.SubElement(r, ET.QName(W_NS, "rPr"))
+    ET.SubElement(rpr, ET.QName(W_NS, "noProof"))
+    t_el = ET.SubElement(r, ET.QName(W_NS, "t"))
+    t_el.set(ET.QName("http://www.w3.org/XML/1998/namespace", "space"), "preserve")
+    t_el.text = text
+    return new_p
+
+
+def _replace_bibliography_cache(doc: ET._Element, sources: list[BibSource]) -> None:
+    """Replace the cached BIBLIOGRAPHY field result with actual formatted entries.
+
+    The template's inner bibliography SDT contains a single paragraph with
+    the BIBLIOGRAPHY field and cached result runs.  We rebuild the entire
+    inner SDT content: one field paragraph (begin/instr/separate/result/end)
+    plus one extra paragraph per additional source.
+    """
+    bib_instr = doc.xpath(
+        "//w:instrText[contains(., 'BIBLIOGRAPHY')]", namespaces=NS
+    )
+    if not bib_instr:
+        return
+
+    # Navigate up to the paragraph, then its container (sdtContent).
+    p = bib_instr[0].getparent()
+    while p is not None and p.tag != ET.QName(W_NS, "p"):
+        p = p.getparent()
+    if p is None:
+        return
+    container = p.getparent()
+    if container is None:
+        return
+
+    # Remove all existing content from the container.
+    for child in list(container):
+        container.remove(child)
+
+    # Build a fresh field paragraph: begin / instrText / separate / result / end
+    first_text = _format_bib_entry(sources[0]) if sources else ""
+    field_p = ET.SubElement(container, ET.QName(W_NS, "p"))
+    ppr = ET.SubElement(field_p, ET.QName(W_NS, "pPr"))
+    ps = ET.SubElement(ppr, ET.QName(W_NS, "pStyle"))
+    ps.set(ET.QName(W_NS, "val"), "Bibliography")
+    ind = ET.SubElement(ppr, ET.QName(W_NS, "ind"))
+    ind.set(ET.QName(W_NS, "left"), "720")
+    ind.set(ET.QName(W_NS, "hanging"), "720")
+
+    r_begin = ET.SubElement(field_p, ET.QName(W_NS, "r"))
+    ET.SubElement(r_begin, ET.QName(W_NS, "fldChar"), attrib={ET.QName(W_NS, "fldCharType"): "begin"})
+
+    r_instr = ET.SubElement(field_p, ET.QName(W_NS, "r"))
+    it = ET.SubElement(r_instr, ET.QName(W_NS, "instrText"))
+    it.set(ET.QName("http://www.w3.org/XML/1998/namespace", "space"), "preserve")
+    it.text = " BIBLIOGRAPHY "
+
+    r_sep = ET.SubElement(field_p, ET.QName(W_NS, "r"))
+    ET.SubElement(r_sep, ET.QName(W_NS, "fldChar"), attrib={ET.QName(W_NS, "fldCharType"): "separate"})
+
+    r_txt = ET.SubElement(field_p, ET.QName(W_NS, "r"))
+    rpr = ET.SubElement(r_txt, ET.QName(W_NS, "rPr"))
+    ET.SubElement(rpr, ET.QName(W_NS, "noProof"))
+    t_el = ET.SubElement(r_txt, ET.QName(W_NS, "t"))
+    t_el.set(ET.QName("http://www.w3.org/XML/1998/namespace", "space"), "preserve")
+    t_el.text = first_text
+
+    r_end = ET.SubElement(field_p, ET.QName(W_NS, "r"))
+    ET.SubElement(r_end, ET.QName(W_NS, "fldChar"), attrib={ET.QName(W_NS, "fldCharType"): "end"})
+
+    # Add remaining entries as separate paragraphs.
+    for src in sources[1:]:
+        container.append(_make_bib_paragraph(_format_bib_entry(src)))
+
+
+def _ensure_update_fields(settings: ET._Element) -> None:
+    """Add <w:updateFields w:val="true"/> so Word refreshes TOC on open."""
+    uf = settings.find(f".//{{{W_NS}}}updateFields")
+    if uf is None:
+        uf = ET.SubElement(settings, ET.QName(W_NS, "updateFields"))
+    uf.set(ET.QName(W_NS, "val"), "true")
+
+
+def _add_heading_spacing(styles: ET._Element) -> None:
+    """Add spacing-after to heading styles for visual breathing room."""
+    _HEADING_AFTER = {
+        "Heading1": 240,   # 12pt
+        "Heading2": 120,   # 6pt
+        "Heading3": 120,   # 6pt
+        "Heading4": 120,   # 6pt
+    }
+    for style in styles.findall(f".//{{{W_NS}}}style"):
+        sid = style.get(ET.QName(W_NS, "styleId"), "")
+        if sid not in _HEADING_AFTER:
+            continue
+        ppr = style.find(f"{{{W_NS}}}pPr")
+        if ppr is None:
+            ppr = ET.SubElement(style, ET.QName(W_NS, "pPr"))
+        spacing = ppr.find(f"{{{W_NS}}}spacing")
+        if spacing is None:
+            spacing = ET.SubElement(ppr, ET.QName(W_NS, "spacing"))
+        spacing.set(ET.QName(W_NS, "after"), str(_HEADING_AFTER[sid]))
+
+
+def _set_document_language(styles: ET._Element, lang_code: str) -> None:
+    """Set the default document language in styles.xml (rPrDefault and all styles)."""
+    for lang_el in styles.findall(f".//{{{W_NS}}}lang"):
+        lang_el.set(ET.QName(W_NS, "val"), lang_code)
+
+
+def _set_settings_language(settings: ET._Element, lang_code: str) -> None:
+    """Set themeFontLang in settings.xml."""
+    tfl = settings.find(f".//{{{W_NS}}}themeFontLang")
+    if tfl is not None:
+        tfl.set(ET.QName(W_NS, "val"), lang_code)
+
+
+_HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{6})$")
+
+
+def _apply_color_swatches(nodes: list[ET._Element]) -> None:
+    """Find table cells containing a hex color code and apply that color as cell shading."""
+    for tbl in _iter_tables(nodes):
+        for row in tbl.findall("./w:tr", namespaces=NS):
+            for tc in row.findall("./w:tc", namespaces=NS):
+                cell_text = "".join(
+                    t.text or "" for t in tc.findall(".//w:t", namespaces=NS)
+                ).strip()
+                m = _HEX_COLOR_RE.match(cell_text)
+                if not m:
+                    continue
+                color = m.group(1).upper()
+                tcpr = tc.find("w:tcPr", namespaces=NS)
+                if tcpr is None:
+                    tcpr = ET.SubElement(tc, ET.QName(W_NS, "tcPr"))
+                    tc.insert(0, tcpr)
+                shd = tcpr.find("w:shd", namespaces=NS)
+                if shd is None:
+                    shd = ET.SubElement(tcpr, ET.QName(W_NS, "shd"))
+                shd.set(ET.QName(W_NS, "val"), "clear")
+                shd.set(ET.QName(W_NS, "color"), "auto")
+                shd.set(ET.QName(W_NS, "fill"), color)
+
+
 def _replace_inline_markers_in_textnode(
     t: ET._Element,
     *,
@@ -808,6 +1193,10 @@ def _center_captioned_figure_images(doc: ET._Element) -> None:
             jc = ET.SubElement(ppr, ET.QName(W_NS, "jc"))
         jc.set(ET.QName(W_NS, "val"), "center")
 
+        # Keep caption, image, and source line together across page breaks.
+        _ensure_keep_next(cap)
+        _ensure_keep_next(nxt)
+
 
 def _insert_after_textnode(t: ET._Element, new_nodes: list[ET._Element]) -> None:
     # Insert after the parent run of this text node.
@@ -847,6 +1236,9 @@ def _replace_paragraph_with_caption(
     if pstyle is None:
         pstyle = ET.SubElement(ppr, ET.QName(W_NS, "pStyle"))
     pstyle.set(ET.QName(W_NS, "val"), "Caption")
+
+    # Keep caption together with the next element (image or table)
+    _ensure_keep_next(p)
 
     # Bookmark around label + SEQ number
     bm_start = ET.Element(ET.QName(W_NS, "bookmarkStart"))
