@@ -1,0 +1,5 @@
+sources:
+  - tag: dummy
+    type: Book
+    title: Referencia temporal
+    year: "2026"
