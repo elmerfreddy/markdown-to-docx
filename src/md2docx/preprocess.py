@@ -7,6 +7,7 @@ import struct
 
 from md2docx.codeimg import render_code_to_png
 from md2docx.mermaid import render_mermaid_to_png
+from md2docx.plantuml import render_plantuml_to_png
 
 
 CAPTION_FIG_RE = re.compile(r"^\[\[MD2DOCX_CAPTION_FIG:([A-Za-z0-9_-]+)\|(.*)\]\]$")
@@ -158,6 +159,50 @@ def preprocess_markdown(*, input_md: Path, out_dir: Path, media_dir: Path) -> Pr
                 pending_figure = None
                 continue
 
+            # PlantUML code block
+            if line.strip() == "```plantuml":
+                plantuml_lines: list[str] = []
+                i += 1
+                while i < len(lines) and lines[i].strip() != "```":
+                    plantuml_lines.append(lines[i])
+                    i += 1
+                if i >= len(lines):
+                    raise ValueError("Unclosed plantuml fence")
+                # consume closing fence
+                i += 1
+
+                fig_id = pending_figure["id"]
+                title = pending_figure["title"]
+                source = pending_figure["source"]
+
+                out_lines.extend(
+                    [
+                        '::: {custom-style="Caption"}',
+                        f"[[MD2DOCX_CAPTION_FIG:{fig_id}|{title}]]",
+                        ":::",
+                        "",
+                    ]
+                )
+
+                png_path = media_dir / f"fig_{fig_id}.png"
+                render_plantuml_to_png("\n".join(plantuml_lines), output_png=png_path)
+
+                # Reference relative to processed.md
+                rel = png_path.relative_to(out_dir)
+                dims = _png_dimensions(png_path)
+                width_in = MERMAID_MAX_WIDTH_IN
+                if dims is not None:
+                    w_px, h_px = dims
+                    if h_px > 0:
+                        width_in = min(MERMAID_MAX_WIDTH_IN, MERMAID_MAX_HEIGHT_IN * (w_px / h_px))
+                out_lines.append(f"![]({rel.as_posix()}){{width={width_in:.2f}in}}")
+                out_lines.append("")
+                out_lines.append(f"Fuente: {source}")
+                out_lines.append("")
+
+                pending_figure = None
+                continue
+
             # Code fence
             if line.strip().startswith("```"):
                 fence = line.strip()
@@ -227,7 +272,7 @@ def preprocess_markdown(*, input_md: Path, out_dir: Path, media_dir: Path) -> Pr
                 continue
 
             raise ValueError(
-                f"figure directive must be followed by mermaid, code fence, or image at line {i+1}"
+                f"figure directive must be followed by mermaid, plantuml, code fence, or image at line {i+1}"
             )
 
         # Track fenced code blocks

@@ -30,7 +30,6 @@ class ValidationReport:
 
 _FIG_DIRECTIVE_RE = re.compile(r"^<!--\s*figure\s+(.*?)\s*-->\s*$", re.M)
 _TAB_DIRECTIVE_RE = re.compile(r"^<!--\s*table\s+(.*?)\s*-->\s*$", re.M)
-_MERMAID_FENCE_RE = re.compile(r"^```mermaid\s*$", re.M)
 _CITATION_GROUP_RE = re.compile(r"\[(?P<content>[^\[\]]*?@[^\]]*?)\]")
 
 
@@ -96,16 +95,17 @@ def validate_project(input_md: Path, *, sources_path: Path, strict: bool) -> Val
             errors.append(f"duplicate table id: {tab_id}")
         tab_ids.add(tab_id)
 
-    # Mermaid fences must be preceded by a figure directive
+    # Mermaid/PlantUML fences must be preceded by a figure directive
     lines = txt.splitlines()
     for idx, line in enumerate(lines):
-        if line.strip() == "```mermaid":
+        if line.strip() in ("```mermaid", "```plantuml"):
+            fence_lang = line.strip()[3:]
             # Look backwards for the previous non-empty line
             j = idx - 1
             while j >= 0 and not lines[j].strip():
                 j -= 1
             if j < 0 or not lines[j].strip().startswith("<!--figure"):
-                errors.append(f"mermaid block at line {idx+1} must be preceded by a figure directive")
+                errors.append(f"{fence_lang} block at line {idx+1} must be preceded by a figure directive")
 
     # Cross refs
     for ref_id in re.findall(r"@fig:([A-Za-z0-9_-]+)", txt):

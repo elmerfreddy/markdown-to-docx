@@ -7,6 +7,7 @@ Este documento es un ejemplo completo compatible con el CLI.
 Este informe muestra todos los componentes soportados por `md2docx`:
 
 - Mermaid
+- PlantUML
 - Imagen local
 - Tabla simple
 - Referencias cruzadas (@fig y @tab)
@@ -23,6 +24,7 @@ El objetivo es demostrar la estructura mínima requerida para generar DOCX con c
 # 2. Figuras
 
 Como se muestra en @fig:arquitectura-backend, el flujo de datos sigue etapas claras.
+También se incluye un diagrama PlantUML (ver @fig:secuencia-aprobacion).
 También se incluye una imagen local (ver @fig:logo-sigir).
 
 ## 2.1 Arquitectura
@@ -39,6 +41,22 @@ flowchart TD
 
 <!--figure id=logo-sigir title="Logo de ejemplo" source="Elaboración propia"-->
 ![](assets/images/example.png)
+
+## 2.3 Flujo de aprobación
+
+<!--figure id=secuencia-aprobacion title="Secuencia de aprobación departamental" source="Elaboración propia"-->
+```plantuml
+@startuml
+actor Fiscal
+participant API
+participant DB
+
+Fiscal -> API: Aprobar IMA
+API -> DB: update state = APPROVED
+DB --> API: ok
+API --> Fiscal: confirmación
+@enduml
+```
 
 # 3. Tablas
 

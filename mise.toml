@@ -1,0 +1,4 @@
+[tools]
+pandoc = "3.9"
+python = "3.12.12"
+java = "liberica-jre-21.0.10+10"

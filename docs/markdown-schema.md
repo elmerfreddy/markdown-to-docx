@@ -48,14 +48,27 @@ El CLI renderiza Mermaid a PNG (fondo transparente) e inserta:
 - Imagen
 - Fuente abajo: `Fuente: ...` (estilo Normal)
 
-### 3.2 Figura con imagen local
+### 3.2 Figura con PlantUML
+
+```md
+<!--figure id=diag-plantuml title="Diagrama de procesos" source="Elaboración propia"-->
+```plantuml
+@startuml
+Alice -> Bob: Hola
+@enduml
+```
+```
+
+El CLI renderiza PlantUML a PNG usando `tools/plantuml/plantuml.jar`.
+
+### 3.3 Figura con imagen local
 
 ```md
 <!--figure id=mapa title="Mapa de cobertura" source="Institución X (2024)"-->
 ![](assets/images/mapa.png)
 ```
 
-### 3.3 Figura con snippet de código
+### 3.4 Figura con snippet de código
 
 ```md
 <!--figure id=snippet-ejemplo title="Ejemplo TypeScript: useTerritorialContext()" source="Elaboración propia"-->

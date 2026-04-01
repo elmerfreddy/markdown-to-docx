@@ -18,6 +18,8 @@ La salida queda lista para abrir en Word y actualizar campos (`Ctrl+A` luego `F9
 
 - Python 3.10+
 - Pandoc en PATH
+- Java en PATH (recomendado: gestionado con `mise`)
+  - El proyecto incluye `tools/plantuml/plantuml.jar` para render de PlantUML.
 - Node.js en PATH
   - Para Mermaid: `mmdc` (mermaid-cli) disponible.
     - Recomendado: `npm install` (usa `package.json`) y el CLI usará `node_modules/.bin/mmdc`
@@ -37,7 +39,7 @@ Ejemplo completo en `examples/example-report/`.
 
 Ver `docs/markdown-schema.md`.
 
-Soporta figuras con Mermaid, imágenes locales y snippets de código si se marcan con `<!--figure ...-->`.
+Soporta figuras con Mermaid, PlantUML, imágenes locales y snippets de código si se marcan con `<!--figure ...-->`.
 
 ## Instalación (dev)
 
@@ -48,7 +50,12 @@ pip install -e .
 
 # Mermaid renderer (opcional pero recomendado)
 npm install
+
+# Java runtime (PlantUML)
+mise install
 ```
+
+> Nota: `plantuml.jar` ya viene versionado en `tools/plantuml/plantuml.jar`.
 
 ## Uso
 
